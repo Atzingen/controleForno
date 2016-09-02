@@ -14,6 +14,17 @@ ControleForno::ControleForno()
     setProtocoloSerial();
 }
 
+void ControleForno::teste_resistencias()
+{
+    for (int i=0;i<6;i++)
+    {
+        digitalWrite(_pinResistencia[i],HIGH);
+        delay(300);
+        digitalWrite(_pinResistencia[i],LOW);
+        delay(300);
+    }
+}
+
 void ControleForno::loopTimer()
 {
     if ( millis() - _tempoAnterior > 10*_PeriodoPwd )

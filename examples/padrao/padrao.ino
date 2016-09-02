@@ -11,6 +11,7 @@ ControleForno forno;
 void setup()
 {
   Serial.begin(9600);
+  forno.teste_resistencias();
 }
 
 void loop()

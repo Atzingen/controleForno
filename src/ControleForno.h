@@ -12,6 +12,7 @@ class ControleForno
 {
     public:
         ControleForno();
+        void teste_resistencias();
         void eventoEsteira();
         void loopTimer();
         void leituraSerial(char chr);
