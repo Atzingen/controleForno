@@ -18,6 +18,7 @@ class ControleForno
         void leituraSerial(char chr);
         void salvaEEPROM(long valor);
         long leituraEEPROM();
+        void controlaEsteira(int v);
         String leituraAnalogica(int pin);
         String tradaDado(String dado);
         boolean verificaNumerico(char chr);
@@ -33,6 +34,7 @@ class ControleForno
         void setLeituraAnalog(int delayAnalog = 5, int nLeituras = 10);
         void setProtocoloSerial(
             String STR_pedidoTemperaturas = "ST",
+            String STR_emergencia = "SE",
             String STR_inicioDado = "0001",
             char CHR_inicioDado = 'S',
             char CHR_fimDado = '\n',
@@ -42,20 +44,24 @@ class ControleForno
             char CHR_esteiraFrente = 'H',
             char CHR_esteiraTras = 'A',
             char CHR_esteiraParada = 'D',
-            char CHR_tempoPWM = 'U'
-        );
-        struct pwm{
-            boolean ligado;
+            char CHR_tempoPWM = 'U',
+            char CHR_check = 'K',
+            char CHR_setADC = 'L'
+         );
+        int velocidadeEsteira = 0;
+        struct resistencias{
+            boolean pwmLigado;
             int potencia;
+            boolean ligado;
         };
-
-        pwm ResistenciaPWM[6] = {
-            {false, 0},
-            {false, 0},
-            {false, 0},
-            {false, 0},
-            {false, 0},
-            {false, 0}};
+        resistencias estadoResistencias[6] = {
+            {false, 0, false},
+            {false, 0, false},
+            {false, 0, false},
+            {false, 0, false},
+            {false, 0, false},
+            {false, 0, false}};
+        boolean DEBUG = false;
 
     private:
         unsigned long _tempoAnterior = 0;
@@ -74,6 +80,7 @@ class ControleForno
 
         String _STR_pedidoTemperaturas;
         String _STR_inicioDado;
+        String _STR_emergencia;
         char _CHR_inicioDado;
         char _CHR_fimDado;
         char _CHR_ligaForno;
@@ -83,6 +90,8 @@ class ControleForno
         char _CHR_esteiraTras;
         char _CHR_esteiraParada;
         char _CHR_tempoPWM;
+        char _CHR_check;
+        char _CHR_setADC;
 
         String _dadosBuffer = "";
 };

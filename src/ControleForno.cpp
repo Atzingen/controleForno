@@ -10,7 +10,6 @@ ControleForno::ControleForno()
     setLeituraAnalog();
     int t = leituraEEPROM();
     setPeriodoPwm(t);
-    Serial.println(t);
     setProtocoloSerial();
 }
 
@@ -34,6 +33,30 @@ void ControleForno::loopTimer()
     }
 }
 
+void ControleForno::controlaEsteira(int v)
+{
+    // Velocidade 0 -> parar esteira
+    if ( v == 0 )
+    {
+        digitalWrite(_pinEstEnable, LOW);
+        digitalWrite(_pinEstPwm, LOW);
+        digitalWrite(_pinEstSentido, LOW);
+    }
+    // Esteira para frente ou para tras no modo pwm:
+    else if ( v > -100 && v < 100)
+    {
+        digitalWrite(_pinEstEnable, HIGH);
+        digitalWrite(_pinEstSentido, v > 0);
+        analogWrite(_pinEstPwm, map(abs(v),0,100,0,255));
+    }
+    else if ( v == 100 || v == -100)
+    {
+        digitalWrite(_pinEstEnable, HIGH);
+        digitalWrite(_pinEstSentido, v > 0);
+        digitalWrite(_pinEstPwm, HIGH);
+    }
+}
+
 void ControleForno::leituraSerial(char chr)
 {
     /*
@@ -42,14 +65,30 @@ void ControleForno::leituraSerial(char chr)
         Caso a comunicação esteja terminada (com caracter de fim de dado),
         é feito um tratamento no conjunto de dados recebido (que fica salvo
         na String _dadosBuffer).
-        Caso o pedido da unidade mestre não esteja terminada (nao seja o caracter
-        final), a String _dadosBuffer é incrementada.
+        Caso o pedido da unidade mestre não esteja terminada (nao seja o
+        caracter final), a String _dadosBuffer é incrementada.
     */
     if ( chr == _CHR_fimDado)   // Caso chegue um caracter '\n' (fim de linha)
     {                           // Descobrir que tipo de pedido chegou:
-        ///////////////////////////////////////////////////////////////////////////////////
+        boolean erroDado = false;
+        ////////////////////////////////////////////////////////////////////////
+		// Caso SE, Ermergencia: para esteira e resistencias e devolve eco
+        if ( _dadosBuffer == _STR_emergencia)
+        {
+            // Parando a esteira
+            velocidadeEsteira = 0;
+            controlaEsteira(velocidadeEsteira);
+            // Desliga todas as resistências
+            for (int i=0;i<6;i++)
+            {
+                digitalWrite(_pinResistencia[i],LOW);
+                estadoResistencias[i].ligado = false;
+                estadoResistencias[i].pwmLigado = false;
+            }
+        }
+        ////////////////////////////////////////////////////////////////////////
 		// Caso ST, devolver os valores de temperatura dos 6 sensores
-		if ( _dadosBuffer == _STR_pedidoTemperaturas )
+		else if ( _dadosBuffer == _STR_pedidoTemperaturas )
         {
 			_dadosBuffer = "";	// Apaga o valor da variavel dados para usa-la para devolver os valores de temperatura pela serial
             _dadosBuffer += _CHR_inicioDado;
@@ -59,7 +98,6 @@ void ControleForno::leituraSerial(char chr)
             {
 				_dadosBuffer += leituraAnalogica(_pinSensor[i]);
         	}
-			Serial.println(_dadosBuffer);	// Envia pela serial os dados da temperatura
 		}
         ///////////////////////////////////////////////////////////////////////////////////
 		// Caso S'x''y', com x de 2 a 7 (as 6 resistências) e y 1 ou 2 (ligar ou desligar)
@@ -69,10 +107,11 @@ void ControleForno::leituraSerial(char chr)
         _dadosBuffer.charAt(2) == _CHR_desligaForno) )
         {
             // Liga ou desliga o respectivo pino digital da resitência do forno
-			digitalWrite(int(_dadosBuffer.charAt(1)) - 48, _dadosBuffer.charAt(2) == _CHR_ligaForno);
             int i = getIndiceResitencia(_dadosBuffer.charAt(1));
-            ResistenciaPWM[i].ligado   = false;
-			Serial.println(_dadosBuffer);// Devolve o pedido recebido para verificação
+            boolean estadoPino = _dadosBuffer.charAt(2) == _CHR_ligaForno;
+            digitalWrite(_pinResistencia[i], estadoPino);
+            estadoResistencias[i].pwmLigado   = false;
+            estadoResistencias[i].ligado   = estadoPino;
 		}
         ///////////////////////////////////////////////////////////////////////////////////
 		// Caso SP'x''yy', com x de 2 a 7 (as 6 resistências) e y a potência de 1 a 99 (1% a 99%)
@@ -87,12 +126,12 @@ void ControleForno::leituraSerial(char chr)
             if ( a >= 0  && a < 101 && verificaNumerico(dados_new) )
             {
                 int i = getIndiceResitencia(_dadosBuffer.charAt(2));
-                ResistenciaPWM[i].ligado   = true;
-                ResistenciaPWM[i].potencia = a;
-                Serial.println(_dadosBuffer); // Devolve o pedido recebido para verificação
+                estadoResistencias[i].pwmLigado   = true;
+                estadoResistencias[i].potencia = a;
+                estadoResistencias[i].ligado = false;
             }
             else
-                Serial.println("Erro - Comando recebido mas nao identificado");
+                erroDado = true;
 		}
 		/////////////////////////////////////////////////////////////////////////////////
 		// Caso SH'xx', SA'xx' ou SD - Esteira, para frente, tras ou parada
@@ -103,9 +142,8 @@ void ControleForno::leituraSerial(char chr)
             // Quando Comando SD
 			if (_dadosBuffer.charAt(1) == _CHR_esteiraParada && _dadosBuffer.length() == 2 )
             {
-				digitalWrite(_pinEstSentido, LOW);  // Comando para parar a esteira
-				digitalWrite(_pinEstPwm, LOW);
-				digitalWrite(_pinEstEnable, LOW);   // Esteira Disable
+                velocidadeEsteira = 0;
+                controlaEsteira(velocidadeEsteira);
 			}
             // Quando Comando SH'xx', com x = numero inteiro 1-100
 			else if (_dadosBuffer.charAt(1) == _CHR_esteiraFrente )
@@ -115,12 +153,11 @@ void ControleForno::leituraSerial(char chr)
                 dados_new.toInt() < 101  &&
                 verificaNumerico(dados_new) )
                 {
-                	digitalWrite(_pinEstSentido, LOW);// Sentido da esteira
-					digitalWrite(_pinEstEnable, HIGH);// Esteira Enable
-					analogWrite(_pinEstPwm, map(dados_new.toInt(),100,0,0,255));// Potência da eteira (pwm)
+                    velocidadeEsteira = -1*dados_new.toInt();
+                    controlaEsteira(velocidadeEsteira);
 				}
 				else
-					Serial.println("Erro - SH_H_D'xx xx nao numerico");
+					erroDado = true;
 			}
             // Quando Comando SA'xx', com x = numero inteiro 1-100
 			else if (_dadosBuffer.charAt(1) == _CHR_esteiraTras )
@@ -130,18 +167,32 @@ void ControleForno::leituraSerial(char chr)
                 dados_new.toInt() < 101 &&
                 verificaNumerico(dados_new) )
                 {
-					digitalWrite(_pinEstSentido, HIGH);	   // Sentido da Esteira
-					digitalWrite(_pinEstEnable, HIGH);     // Esteira Enable
-					analogWrite(_pinEstPwm, map(dados_new.toInt(),100,0,0,255));// Potência da esteira (pwm)
+                    velocidadeEsteira = dados_new.toInt();
+                    controlaEsteira(velocidadeEsteira);
 				}
 				else
-					Serial.println("Erro - SH_A_D'xx xx nao numerico");
+					erroDado = true;
 			}
 			else
-				Serial.println("Erro - SH_A_D'xx");
-			Serial.println(_dadosBuffer);	// Devolve o pedido recebido para verificação
+				erroDado = true;
 		}
-        ///////////////////////////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////////
+		// Caso SL'ab cde' - Alterar o formato da leitura ADC dos sensores
+        else if ( _dadosBuffer.charAt(0) == _CHR_inicioDado &&
+        _dadosBuffer.charAt(1) == _CHR_setADC)
+        {
+            int nLeituras = _dadosBuffer.substring(2,4).toInt();
+            int delayAnalog = _dadosBuffer.substring(4).toInt();
+            if (DEBUG)
+            {
+                Serial.print("DEBUG adc: nLeituras= ");
+                Serial.print(nLeituras);
+                Serial.print(" delay: ");
+                Serial.println(delayAnalog);
+            }
+            setLeituraAnalog(delayAnalog,nLeituras);
+        }
+        ///////////////////////////////////////////////////////////////////////
 		// Caso SU'xxx' - Alterar o periodo do pwm
 		else if ( _dadosBuffer.charAt(0) == _CHR_inicioDado &&
         _dadosBuffer.charAt(1) == _CHR_tempoPWM)
@@ -154,10 +205,37 @@ void ControleForno::leituraSerial(char chr)
 				salvaEEPROM(tempo_pwd);
                 _PeriodoPwd = tempo_pwd;
 			}
-            Serial.println(_dadosBuffer);	// Devolve o pedido recebido para verificação
 		}
+        ///////////////////////////////////////////////////////////////////////
+		// Caso SK - check no estado das resistencias e esteira
+        else if ( _dadosBuffer.charAt(0) == _CHR_inicioDado &&
+                  _dadosBuffer.charAt(1) == _CHR_check )
+        {
+            _dadosBuffer = "";
+            _dadosBuffer += "S,";
+            for (int i=0; i<6; i++)
+            {
+                if ( estadoResistencias[i].ligado )
+                {
+                    _dadosBuffer += "100";
+                }
+                else if ( estadoResistencias[i].pwmLigado)
+                {
+                    _dadosBuffer += String(estadoResistencias[i].potencia);
+                }
+                else{
+                    _dadosBuffer += "0";
+                }
+                _dadosBuffer += ",";
+            }
+            _dadosBuffer += velocidadeEsteira;
+        }
 		else // Erro
-			Serial.println("Erro - Comando recebido mas nao identificado");
+			erroDado = true;
+        if (erroDado)
+            Serial.println("Erro de recebimento: string invalida");
+        else
+            Serial.println(_dadosBuffer);
 		_dadosBuffer = "";	// Apaga os valores da String dados
 	}
 	else   // Caso não chegue um caracter '\n' (fim de linha)
@@ -172,9 +250,9 @@ void ControleForno::eventoEsteira()
     */
     for (int i=0;i<6;i++)
     {
-        if ( ResistenciaPWM[i].ligado ) // Checa se a resistência esta marcada
+        if ( estadoResistencias[i].pwmLigado ) // Checa se a resistência esta marcada
         {                               // para atuar como pwm
-            digitalWrite(_pinResistencia[i], (ResistenciaPWM[i].potencia >= _contadorPwm));
+            digitalWrite(_pinResistencia[i], (estadoResistencias[i].potencia >= _contadorPwm));
             // Liga ou desliga a resitência 1 de acordo com o resultado
             // da comparação entre a potência da resistência 1 e o contador,
         }
@@ -197,8 +275,12 @@ void ControleForno::salvaEEPROM(long v)
 	byte tres = ((v >> 8) & 0xFF);
 	byte dois = ((v >> 16) & 0xFF);
 	byte um = ((v >> 24) & 0xFF);
-	Serial.print("EEPROM_salva: ");
-	Serial.println(v);
+    if (DEBUG)
+    {
+        Serial.print("DEBUG EEPROM_salva: ");
+        Serial.println(v);
+    }
+
 	EEPROM.write(1, quatro);
 	EEPROM.write(2, tres);
 	EEPROM.write(3, dois);
@@ -215,8 +297,12 @@ long ControleForno::leituraEEPROM()
 	long tres = EEPROM.read(2);
 	long dois = EEPROM.read(3);
 	long um = EEPROM.read(4);
-	Serial.print("EEPROM_leitura: ");
-	Serial.println(((quatro << 0) & 0xFF) + ((tres << 8) & 0xFFFF) + ((dois << 16) & 0xFFFFFF) + ((um << 24) & 0xFFFFFFFF));
+    if (DEBUG)
+    {
+        Serial.print("DEBUG EEPROM_leitura: ");
+    	Serial.println(((quatro << 0) & 0xFF) + ((tres << 8) & 0xFFFF) + ((dois << 16) & 0xFFFFFF) + ((um << 24) & 0xFFFFFFFF));
+    }
+
 	return ((quatro << 0) & 0xFF) + ((tres << 8) & 0xFFFF) + ((dois << 16) & 0xFFFFFF) + ((um << 24) & 0xFFFFFFFF);
 }
 
@@ -303,12 +389,14 @@ long ControleForno::getPeriodoPwd()
     return _PeriodoPwd;
 }
 
-void ControleForno::setProtocoloSerial(String STR_pedidoTemperaturas, String STR_inicioDado,
-char CHR_inicioDado,char CHR_fimDado,char CHR_ligaForno, char CHR_desligaForno, char CHR_setPotenciaPWM, char CHR_esteiraFrente,
-char CHR_esteiraTras, char CHR_esteiraParada,
-char CHR_tempoPWM)
+void ControleForno::setProtocoloSerial(String STR_pedidoTemperaturas,
+String STR_emergencia, String STR_inicioDado, char CHR_inicioDado,
+char CHR_fimDado,char CHR_ligaForno, char CHR_desligaForno,
+char CHR_setPotenciaPWM, char CHR_esteiraFrente, char CHR_esteiraTras,
+char CHR_esteiraParada, char CHR_tempoPWM, char CHR_check, char CHR_setADC)
 {
     _STR_pedidoTemperaturas = STR_pedidoTemperaturas;
+    _STR_emergencia = STR_emergencia;
     _STR_inicioDado = STR_inicioDado;
     _CHR_inicioDado = CHR_inicioDado;
     _CHR_fimDado = CHR_fimDado;
@@ -319,6 +407,8 @@ char CHR_tempoPWM)
     _CHR_esteiraTras = CHR_esteiraTras;
     _CHR_esteiraParada = CHR_esteiraParada;
     _CHR_tempoPWM = CHR_tempoPWM;
+    _CHR_check = CHR_check;
+    _CHR_setADC = CHR_setADC;
 }
 
 void ControleForno::setLeituraAnalog(int delayAnalog, int nLeituras)
@@ -329,8 +419,8 @@ void ControleForno::setLeituraAnalog(int delayAnalog, int nLeituras)
 
 void ControleForno::setPeriodoPwm(int t)
 {
-    if ( t < 10 )//salvaEEPROM(100);
-        t = 100;
+    if ( t < 5 )
+        t = 30;
     _PeriodoPwd = t;
 }
 
