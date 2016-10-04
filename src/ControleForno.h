@@ -29,7 +29,7 @@ class ControleForno
         long getPeriodoPwd();
         void setPeriodoPwm(int v);
         void setPinResistencia(int pinR1=2, int pinR2=3,int pinR3=4,int pinR4=5,int pinR5=6,int pinR6=7);
-        void setPinEsteira(int pinEstEnable=10, int pinEstPwm=11, int pinEstSentido=12);
+        void setPinEsteira(int pinEstEnable=12, int pinEstPwm=11, int pinEstSentido=10);
         void setPinSensores(int pinS1=0, int pinS2=1,int pinS3=2,int pinS4=3,int pinS5=4,int pinS6=5);
         void setLeituraAnalog(int delayAnalog = 5, int nLeituras = 10);
         void setProtocoloSerial(

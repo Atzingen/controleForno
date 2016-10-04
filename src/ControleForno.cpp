@@ -15,12 +15,15 @@ ControleForno::ControleForno()
 
 void ControleForno::teste_resistencias()
 {
+    controlaEsteira(0);
     for (int i=0;i<6;i++)
     {
         digitalWrite(_pinResistencia[i],HIGH);
-        delay(300);
+        delay(500);
+    }
+    for (int i=0;i<6;i++)
+    {
         digitalWrite(_pinResistencia[i],LOW);
-        delay(300);
     }
 }
 
@@ -38,20 +41,20 @@ void ControleForno::controlaEsteira(int v)
     // Velocidade 0 -> parar esteira
     if ( v == 0 )
     {
-        digitalWrite(_pinEstEnable, LOW);
-        digitalWrite(_pinEstPwm, LOW);
-        digitalWrite(_pinEstSentido, LOW);
+        digitalWrite(_pinEstEnable, HIGH);
+        digitalWrite(_pinEstPwm, HIGH);
+        digitalWrite(_pinEstSentido, HIGH);
     }
     // Esteira para frente ou para tras no modo pwm:
     else if ( v > -100 && v < 100)
     {
-        digitalWrite(_pinEstEnable, HIGH);
+        digitalWrite(_pinEstEnable, LOW);
         digitalWrite(_pinEstSentido, v > 0);
         analogWrite(_pinEstPwm, map(abs(v),0,100,0,255));
     }
     else if ( v == 100 || v == -100)
     {
-        digitalWrite(_pinEstEnable, HIGH);
+        digitalWrite(_pinEstEnable, LOW);
         digitalWrite(_pinEstSentido, v > 0);
         digitalWrite(_pinEstPwm, HIGH);
     }
