@@ -7,8 +7,10 @@ ControleForno::ControleForno()
     setPinResistencia();
     setPinEsteira();
     setPinSensores();
-    setLeituraAnalog();
-    int t = leituraEEPROM();
+    int delayADC = DelayADCleituraEEPROM();
+    int nLeituraADC = nLeituraADCleituraEEPROM();
+    setLeituraAnalog(delayADC,nLeituraADC);
+    int t = PWMleituraEEPROM();
     setPeriodoPwm(t);
     setProtocoloSerial();
 }
@@ -97,10 +99,7 @@ void ControleForno::leituraSerial(char chr)
             _dadosBuffer += _CHR_inicioDado;
             _dadosBuffer += _STR_inicioDado;
             // Inicia com S0001 (padrão para manter consistência com a comunicação ubee - 0001 = primeiro módulo)
-            for (int i=0; i<6; i++)     // Loop para passar por todos os sensores
-            {
-				_dadosBuffer += leituraAnalogica(_pinSensor[i]);
-        	}
+			_dadosBuffer += leituraAnalogica();
 		}
         ///////////////////////////////////////////////////////////////////////////////////
 		// Caso S'x''y', com x de 2 a 7 (as 6 resistências) e y 1 ou 2 (ligar ou desligar)
@@ -202,11 +201,11 @@ void ControleForno::leituraSerial(char chr)
         {
             String dados_new = _dadosBuffer;
             dados_new.remove(0,2);
-			if ( dados_new.toInt() > 10 )
+			if ( dados_new.toInt() > 4 )
             {
 				long tempo_pwd = dados_new.toInt();
-				salvaEEPROM(tempo_pwd);
-                _PeriodoPwd = tempo_pwd;
+				PWMsalvaEEPROM(tempo_pwd);
+                setPeriodoPwm(tempo_pwd);
 			}
 		}
         ///////////////////////////////////////////////////////////////////////
@@ -215,23 +214,7 @@ void ControleForno::leituraSerial(char chr)
                   _dadosBuffer.charAt(1) == _CHR_check )
         {
             _dadosBuffer = "";
-            _dadosBuffer += "S,";
-            for (int i=0; i<6; i++)
-            {
-                if ( estadoResistencias[i].ligado )
-                {
-                    _dadosBuffer += "100";
-                }
-                else if ( estadoResistencias[i].pwmLigado)
-                {
-                    _dadosBuffer += String(estadoResistencias[i].potencia);
-                }
-                else{
-                    _dadosBuffer += "0";
-                }
-                _dadosBuffer += ",";
-            }
-            _dadosBuffer += velocidadeEsteira;
+            _dadosBuffer = retornaInfo();
         }
 		else // Erro
 			erroDado = true;
@@ -243,6 +226,35 @@ void ControleForno::leituraSerial(char chr)
 	}
 	else   // Caso não chegue um caracter '\n' (fim de linha)
 		_dadosBuffer += String(chr);  // Concatena o caracter lido pela serial a String dados
+}
+
+String ControleForno::retornaInfo()
+{
+    String dado = "";
+    dado += "S,";
+    for (int i=0; i<6; i++)
+    {
+        if ( estadoResistencias[i].ligado )
+        {
+            dado += "100";
+        }
+        else if ( estadoResistencias[i].pwmLigado)
+        {
+            dado += String(estadoResistencias[i].potencia);
+        }
+        else{
+            dado += "0";
+        }
+        dado += ",";
+    }
+    dado += velocidadeEsteira;
+    dado += ",";
+    dado += _delayAnalog;
+    dado += ",";
+    dado += _nLeituras;
+    dado += ",";
+    dado += _PeriodoPwd;
+    return dado;
 }
 
 void ControleForno::eventoEsteira()
@@ -266,7 +278,38 @@ void ControleForno::eventoEsteira()
         _contadorPwm++;
 }
 
-void ControleForno::salvaEEPROM(long v)
+void ControleForno::ADCsalvaEEPROM(int delayMs, int nLeituras)
+{
+    /*
+    Recebe os valores delayMs e  nLeituras, referente aos tempos
+    entre cada leitura analógica e o número de leituras para
+    que a média seja retornada
+    O valor dos dois parâmetros é salvo na eeprom nas posições
+    5, 6 e 7, 8 (delayMs e nLeituras) respectivamente. A variável int
+    no arduino possui 2 bytes
+    */
+    byte delayMs_dois = (delayMs & 0xFF);
+	byte delayMs_um = ((delayMs >> 8) & 0xFF);
+    byte nLeituras_dois = (nLeituras & 0xFF);
+	byte nLeituras_um = ((nLeituras >> 8) & 0xFF);
+    if (DEBUG)
+    {
+        Serial.print("DEBUG  ADC_EEPROM_salva: ");
+        Serial.print(delayMs_dois);
+        Serial.print(",");
+        Serial.print(delayMs_um);
+        Serial.print(",");
+        Serial.print(nLeituras_dois);
+        Serial.print(",");
+        Serial.println(nLeituras_um);
+    }
+    EEPROM.write(5, delayMs_dois);
+	EEPROM.write(6, delayMs_um);
+    EEPROM.write(7, nLeituras_dois);
+	EEPROM.write(8, nLeituras_um);
+}
+
+void ControleForno::PWMsalvaEEPROM(long v)
 {
     /*
     Recebe o valor v referente ao tempo do periodo pwm
@@ -283,14 +326,13 @@ void ControleForno::salvaEEPROM(long v)
         Serial.print("DEBUG EEPROM_salva: ");
         Serial.println(v);
     }
-
 	EEPROM.write(1, quatro);
 	EEPROM.write(2, tres);
 	EEPROM.write(3, dois);
 	EEPROM.write(4, um);
 }
 
-long ControleForno::leituraEEPROM()
+long ControleForno::PWMleituraEEPROM()
 {
     /*
     Função que recupera o valor (tempo) do período de pwm que
@@ -308,6 +350,39 @@ long ControleForno::leituraEEPROM()
 
 	return ((quatro << 0) & 0xFF) + ((tres << 8) & 0xFFFF) + ((dois << 16) & 0xFFFFFF) + ((um << 24) & 0xFFFFFFFF);
 }
+
+int ControleForno::DelayADCleituraEEPROM()
+{
+    /*
+    Função que recupera o valor (tempo) do delay nas leirutas ADC, que
+    está salvo na eeprom.
+    */
+    long dois = EEPROM.read(5);
+	long um = EEPROM.read(6);
+    if (DEBUG)
+    {
+        Serial.print("DEBUG EEPROM_leitura delayADC: ");
+        Serial.println( ((dois << 0) & 0xFFFFFF) + ((um << 8) & 0xFFFFFFFF));
+    }
+
+    return ( ((dois << 0) & 0xFFFFFF) + ((um << 8) & 0xFFFFFFFF));
+}
+int ControleForno::nLeituraADCleituraEEPROM()
+{
+    /*
+    Função que recupera número de ADC, que está salvo na eeprom.
+    */
+    long dois = EEPROM.read(7);
+	long um = EEPROM.read(8);
+    if (DEBUG)
+    {
+        Serial.print("DEBUG EEPROM_leitura delayADC: ");
+        Serial.println( ((dois << 0) & 0xFFFFFF) + ((um << 8) & 0xFFFFFFFF));
+    }
+
+    return ( ((dois << 0) & 0xFFFFFF) + ((um << 8) & 0xFFFFFFFF));
+}
+
 
 boolean ControleForno::verificaNumerico(char chr)
 {
@@ -349,32 +424,43 @@ int ControleForno::getIndiceResitencia(char chr)
     return -1;
 }
 
-String ControleForno::leituraAnalogica(int pin)
+String ControleForno::leituraAnalogica()
 {
-	/* 	Essa função lê o valor no ACD especificado (variável analog) _nLeituras vezes retorna a média.
+	/* 	Essa função lê o valor no ACD especificado (variável analog) _nLeituras
+    vezes retorna a média.
 	   	O Resultado é devolvido com 4 digitos, sendo que zeros são adicionados caso
         o valor seja menor que mil. ADC de 10 bits -> resultado de 0 a 1023
 	   	O resultado é concatenado na variável dado e retornado.
 	*/
-	int leitura = 0;														// Variável para receber o valor da leitura
-	for (int i=0;i<_nLeituras;i++)                                          // Repete 10 vezes o procedimento para efetuar a média
+	int leitura[6];
+    for (int i=0; i<6; i++)
     {
-		leitura += analogRead(pin);										    // Leitura do valor do ADC
-		delay(_delayAnalog);												// delay ?
+        leitura[i] = 0;
+    }
+	for (int i=0;i<_nLeituras;i++)
+    {
+        for (int j=0; j<6; j++)
+        {
+            leitura[j] += analogRead(_pinSensor[j]);
+        }
+        delay(_delayAnalog);
 	}
-	leitura = leitura/10;													// Divisão inteira por 10 (foram somadas 10 leituras)
-	String a = "";															// String que receberá o valor da leitura com 4 digitos
-	if ( leitura < 10 ){													// Completa com digitos zeros para completar 4 digitos
-		a += "000";															//  de acordo com o numero inteiro 'leitura'
-	}																		// 3 zeros quando 'leitura' tem 1 digito
-	else if ( leitura < 100 ){
-		a += "00"; 															// 2 zeros quando 'leitura' tem 2 digito
-	}
-	else if ( leitura < 1000 ){
-		a += "0"; 															// 1 zero  quando 'leitura' tem 3 digito
-	}
-	a += String(leitura);
-	return a;															   // Retorna o valor
+    String a = "";
+    for (int i=0; i<6; i++)
+    {
+        leitura[i] = leitura[i]/_nLeituras;
+    	if ( leitura[i] < 10 ){
+    		a += "000";
+    	}
+    	else if ( leitura[i] < 100 ){
+    		a += "00";
+    	}
+    	else if ( leitura[i] < 1000 ){
+    		a += "0";
+    	}
+    	a += String(leitura[i]);
+    }
+	return a;
 }
 
 int ControleForno::getPinSensor(int i)
@@ -418,6 +504,7 @@ void ControleForno::setLeituraAnalog(int delayAnalog, int nLeituras)
 {
     _delayAnalog = delayAnalog;
     _nLeituras = nLeituras;
+    ADCsalvaEEPROM(delayAnalog, nLeituras);
 }
 
 void ControleForno::setPeriodoPwm(int t)
