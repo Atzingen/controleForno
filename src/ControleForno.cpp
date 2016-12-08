@@ -155,7 +155,7 @@ void ControleForno::leituraSerial(char chr)
                 dados_new.toInt() < 101  &&
                 verificaNumerico(dados_new) )
                 {
-                    velocidadeEsteira = -1*dados_new.toInt();
+                    velocidadeEsteira = dados_new.toInt();
                     controlaEsteira(velocidadeEsteira);
 				}
 				else
@@ -169,7 +169,7 @@ void ControleForno::leituraSerial(char chr)
                 dados_new.toInt() < 101 &&
                 verificaNumerico(dados_new) )
                 {
-                    velocidadeEsteira = dados_new.toInt();
+                    velocidadeEsteira = -1*dados_new.toInt();
                     controlaEsteira(velocidadeEsteira);
 				}
 				else
