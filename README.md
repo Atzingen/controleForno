@@ -7,3 +7,6 @@ A parte embarcada no forno (escravo) é controlada por um atmega328p-pu programa
 Parte de trabalho realizado para conclusão do Doutorado em Engenharia de Alimento. FZEA USP
 
 Gustavo Voltani von Atzingen
+gustavo.von.atzingen@gmail.com
+
+This project is licensed under the terms of the MIT license.
