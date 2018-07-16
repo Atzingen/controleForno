@@ -1,21 +1,21 @@
-ControleForno KEYWORD 1
-eventoEsteira KEYWORD 2
-loopTimer KEYWORD 2
-leituraSerial KEYWORD 2
-salvaEEPROM KEYWORD 2
-leituraEEPROM KEYWORD 2
-leituraAnalogica KEYWORD 2
-tradaDado KEYWORD 2
-verificaNumerico KEYWORD 2
-getIndiceResitencia KEYWORD 12
-getPinSensor KEYWORD 2
-getPinResistencia KEYWORD 2
-getPeriodoPwd KEYWORD 2
-setPeriodoPwm KEYWORD 2
-setPinResistencia KEYWORD 2
-setPinEsteira KEYWORD 2
-setPinSensores KEYWORD 2
-setLeituraAnalog KEYWORD 2
-setProtocoloSerial KEYWORD 2
-pwm KEYWORD 2
-ResistenciaPWM KEYWORD 2
+ControleForno	KEYWORD1
+eventoEsteira	KEYWORD2
+loopTimer	KEYWORD2
+leituraSerial	KEYWORD2
+salvaEEPROM	KEYWORD2
+leituraEEPROM	KEYWORD2
+leituraAnalogica	KEYWORD2
+tradaDado	KEYWORD2
+verificaNumerico	KEYWORD2
+getIndiceResitencia	KEYWORD12
+getPinSensor	KEYWORD2
+getPinResistencia	KEYWORD2
+getPeriodoPwd	KEYWORD2
+setPeriodoPwm	KEYWORD2
+setPinResistencia	KEYWORD2
+setPinEsteira	KEYWORD2
+setPinSensores	KEYWORD2
+setLeituraAnalog	KEYWORD2
+setProtocoloSerial	KEYWORD2
+pwm	KEYWORD2
+ResistenciaPWM	KEYWORD2
